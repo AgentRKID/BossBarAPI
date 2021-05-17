@@ -1,0 +1,5 @@
+name: BossBarAPI
+version: ${git.commit.id.abbrev}
+author: AgentRKID
+main: io.github.agentrkid.bossbar.BossBarAPI
+depend: [ProtocolLib]
