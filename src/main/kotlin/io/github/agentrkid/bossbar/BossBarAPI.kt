@@ -21,7 +21,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 class BossBarAPI : JavaPlugin(), Listener {
-    private var entityId: Int = Int.MAX_VALUE - 15000
+    private var entityId: Int = Int.MIN_VALUE + 15000
 
     private val cachedBossBars: MutableMap<UUID, Int> = ConcurrentHashMap()
     private val lastTickTime: MutableMap<UUID, Int> = ConcurrentHashMap()
@@ -176,8 +176,8 @@ class BossBarAPI : JavaPlugin(), Listener {
 
     private fun getEntityId(): Int {
         // Reset the entity count
-        if (entityId == Int.MAX_VALUE) {
-            entityId -= 15000
+        if (entityId == Int.MIN_VALUE) {
+            entityId += 15000
         }
         return entityId--
     }
