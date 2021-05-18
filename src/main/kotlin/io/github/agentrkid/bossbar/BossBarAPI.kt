@@ -9,7 +9,9 @@ import org.bukkit.Bukkit
 import org.bukkit.ChatColor
 import org.bukkit.craftbukkit.v1_8_R3.entity.CraftPlayer
 import org.bukkit.entity.Player
+import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
+import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.java.JavaPlugin
 import java.lang.Exception
 import java.lang.RuntimeException
@@ -23,7 +25,6 @@ class BossBarAPI : JavaPlugin(), Listener {
 
     private val cachedBossBars: MutableMap<UUID, Int> = ConcurrentHashMap()
     private val lastTickTime: MutableMap<UUID, Int> = ConcurrentHashMap()
-
 
     override fun onEnable() {
         instance = this
@@ -46,26 +47,34 @@ class BossBarAPI : JavaPlugin(), Listener {
                 lastTickTime[uuid] = MinecraftServer.currentTick
             }
         }, 0, 3)
+        Bukkit.getPluginManager().registerEvents(this, this)
     }
 
     fun sendBossBar(player: Player, barMessage: String, health: Float) {
+        // You can send empty boss
+        // bars for it to remove
         if (barMessage.isEmpty()) {
             removeBossBar(player)
             return
         }
 
+        // Health can only be 1.0 -> 0.0 (1.0 being 100)
         if (health < 0.0f || health > 1.0f) {
             throw RuntimeException("Health must be between 0 and 1")
         }
 
         var message = barMessage;
 
+        // The bar character length
+        // can't be longer then 64
         if (message.length > 64) {
             message = message.substring(0, 64)
         }
 
         message = ChatColor.translateAlternateColorCodes('&', message)
 
+        // If they don't have a bar
+        // create one else update the current
         if (!cachedBossBars.containsKey(player.uniqueId)) {
             createBossBar(player, message, health)
         } else {
@@ -78,6 +87,9 @@ class BossBarAPI : JavaPlugin(), Listener {
 
         if (entityId != null) {
             val destroyEntityPacket = PacketContainer(PacketType.Play.Server.ENTITY_DESTROY)
+
+            // Add the entity of the players
+            // current wither to an array by itself
             destroyEntityPacket.integerArrays.write(0, intArrayOf(entityId))
 
             sendPacket(player, destroyEntityPacket)
@@ -99,15 +111,17 @@ class BossBarAPI : JavaPlugin(), Listener {
         val pitch = Math.toRadians(player.pitch.toDouble())
         val yaw = Math.toRadians(player.yaw.toDouble())
 
+        // Make the wither spawn where the
+        // player is looking (Like hypixel)
         spawnPacket.integers.write(2, ((player.locX - sin(yaw) * cos(pitch) * 32.0) * 32.0).toInt())
         spawnPacket.integers.write(3, ((player.locY - sin(pitch) * 32.0) * 32.0).toInt())
         spawnPacket.integers.write(4, ((player.locZ + cos(yaw) * cos(pitch) * 32.0) * 32.0).toInt())
 
         val watcher = WrappedDataWatcher()
         watcher.setObject(0, 32.toByte())
-        watcher.setObject(3, 1.toByte())
-        watcher.setObject(6, health * 300.0f)
-        watcher.setObject(2, barMessage)
+        watcher.setObject(3, 1.toByte()) // Set invisible
+        watcher.setObject(6, health * 300.0f) // Set health
+        watcher.setObject(2, barMessage) // Set custom name
         spawnPacket.dataWatcherModifier.write(0, watcher)
 
         sendPacket(bukkitPlayer, spawnPacket)
@@ -122,8 +136,8 @@ class BossBarAPI : JavaPlugin(), Listener {
         metadataUpdatePacket.integers.write(0, entityId)
 
         val watcher = WrappedDataWatcher()
-        watcher.setObject(6, health * 300.0f)
-        watcher.setObject(2, barMessage)
+        watcher.setObject(6, health * 300.0f) // Update health
+        watcher.setObject(2, barMessage) // Update custom name
 
         metadataUpdatePacket.watchableCollectionModifier.write(0, watcher.watchableObjects)
 
@@ -141,6 +155,9 @@ class BossBarAPI : JavaPlugin(), Listener {
             val yaw = Math.toRadians(player.yaw.toDouble())
 
             teleportPacket.integers.write(0, entityId)
+
+            // Put the wither directly in front of
+            // the player 32 blocks away (Like hypixel)
             teleportPacket.integers.write(1, ((player.locX - sin(yaw) * cos(pitch) * 32.0) * 32.0).toInt())
             teleportPacket.integers.write(2, ((player.locY - sin(pitch) * 32.0) * 32.0).toInt())
             teleportPacket.integers.write(3, ((player.locZ + cos(yaw) * cos(pitch) * 32.0) * 32.0).toInt())
@@ -158,10 +175,19 @@ class BossBarAPI : JavaPlugin(), Listener {
     }
 
     private fun getEntityId(): Int {
+        // Reset the entity count
         if (entityId == Int.MAX_VALUE) {
             entityId -= 15000
         }
         return entityId--
+    }
+
+    @EventHandler
+    fun onPlayerQuit(event: PlayerQuitEvent) {
+        val player = event.player;
+
+        cachedBossBars.remove(player.uniqueId)
+        lastTickTime.remove(player.uniqueId)
     }
 
     companion object {
