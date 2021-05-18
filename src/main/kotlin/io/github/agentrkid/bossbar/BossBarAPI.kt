@@ -23,12 +23,20 @@ import kotlin.math.sin
 class BossBarAPI : JavaPlugin(), Listener {
     private var entityId: Int = Int.MIN_VALUE + 15000
 
+    // Holds an O(1) lookup for the wither entity id for the bossbar
+    // and O(1) lookup for last tick times on players
     private val cachedBossBars: MutableMap<UUID, Int> = ConcurrentHashMap()
     private val lastTickTime: MutableMap<UUID, Int> = ConcurrentHashMap()
 
     override fun onEnable() {
         instance = this
 
+        // Repeating task to loop over all players
+        // with bossbars to update wither location
+        // (If you'd like a smoother wither movement
+        // remove the tick time check or always check
+        // for 0 as it will then update every tick
+        // keep in mind that might lag the server)
         Bukkit.getScheduler().runTaskTimer(this, {
             for (uuid in cachedBossBars.keys) {
                 val player = Bukkit.getPlayer(uuid)
@@ -44,12 +52,20 @@ class BossBarAPI : JavaPlugin(), Listener {
                 }
 
                 updateBossBarPosition(player)
+                
+                // Add new tick time 
+                // for the player
                 lastTickTime[uuid] = MinecraftServer.currentTick
             }
         }, 0, 1)
         Bukkit.getPluginManager().registerEvents(this, this)
     }
 
+    /**
+    * Sends a boss bar create or update to the provided player
+    * if barMessage is empty it will try to remove their current
+    * boss bar
+    */
     fun sendBossBar(player: Player, barMessage: String, health: Float) {
         // You can send empty boss
         // bars for it to remove
@@ -82,6 +98,9 @@ class BossBarAPI : JavaPlugin(), Listener {
         }
     }
 
+    /**
+    * Can be removed by other plugins any time
+    */
     fun removeBossBar(player: Player) {
         val entityId = cachedBossBars[player.uniqueId]
 
@@ -106,7 +125,7 @@ class BossBarAPI : JavaPlugin(), Listener {
         val entityId = getEntityId();
 
         spawnPacket.integers.write(0, entityId)
-        spawnPacket.integers.write(1, 64)
+        spawnPacket.integers.write(1, 64) // Wither ID = 64
 
         val pitch = Math.toRadians(player.pitch.toDouble())
         val yaw = Math.toRadians(player.yaw.toDouble())
@@ -126,12 +145,16 @@ class BossBarAPI : JavaPlugin(), Listener {
 
         sendPacket(bukkitPlayer, spawnPacket)
 
+        // Cache the bossbar so we can come back
         cachedBossBars[player.uniqueID] = entityId
     }
 
+    /**
+    * Will never be ran if there is no entry in bossbars
+    */
     private fun updateBossBar(player: Player, barMessage: String, health: Float) {
         val entityId = cachedBossBars[player.uniqueId]
-
+        
         val metadataUpdatePacket = PacketContainer(PacketType.Play.Server.ENTITY_METADATA)
         metadataUpdatePacket.integers.write(0, entityId)
 
@@ -144,26 +167,27 @@ class BossBarAPI : JavaPlugin(), Listener {
         sendPacket(player, metadataUpdatePacket)
     }
 
+    /**
+    * Will never be ran if there is no entry in bossbars
+    */
     private fun updateBossBarPosition(bukkitPlayer: Player) {
         val player = (bukkitPlayer as CraftPlayer).handle
         val entityId = cachedBossBars[player.uniqueID]
 
-        if (entityId != null) {
-            val teleportPacket = PacketContainer(PacketType.Play.Server.ENTITY_TELEPORT)
+        val teleportPacket = PacketContainer(PacketType.Play.Server.ENTITY_TELEPORT)
 
-            val pitch = Math.toRadians(player.pitch.toDouble())
-            val yaw = Math.toRadians(player.yaw.toDouble())
+        val pitch = Math.toRadians(player.pitch.toDouble())
+        val yaw = Math.toRadians(player.yaw.toDouble())
 
-            teleportPacket.integers.write(0, entityId)
+        teleportPacket.integers.write(0, entityId)
 
-            // Put the wither directly in front of
-            // the player 32 blocks away (Like hypixel)
-            teleportPacket.integers.write(1, ((player.locX - sin(yaw) * cos(pitch) * 32.0) * 32.0).toInt())
-            teleportPacket.integers.write(2, ((player.locY - sin(pitch) * 32.0) * 32.0).toInt())
-            teleportPacket.integers.write(3, ((player.locZ + cos(yaw) * cos(pitch) * 32.0) * 32.0).toInt())
+        // Put the wither directly in front of
+        // the player 32 blocks away (Like hypixel)
+        teleportPacket.integers.write(1, ((player.locX - sin(yaw) * cos(pitch) * 32.0) * 32.0).toInt())
+        teleportPacket.integers.write(2, ((player.locY - sin(pitch) * 32.0) * 32.0).toInt())
+        teleportPacket.integers.write(3, ((player.locZ + cos(yaw) * cos(pitch) * 32.0) * 32.0).toInt())
 
-            sendPacket(bukkitPlayer, teleportPacket)
-        }
+        sendPacket(bukkitPlayer, teleportPacket);
     }
 
     private fun sendPacket(player: Player, packet: PacketContainer) {
@@ -186,6 +210,8 @@ class BossBarAPI : JavaPlugin(), Listener {
     fun onPlayerQuit(event: PlayerQuitEvent) {
         val player = event.player;
 
+        // Remove everything as the player has 
+        // gone offline and doesn't have our bossbar no more.
         cachedBossBars.remove(player.uniqueId)
         lastTickTime.remove(player.uniqueId)
     }
