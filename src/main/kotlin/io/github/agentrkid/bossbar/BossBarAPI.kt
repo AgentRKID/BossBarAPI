@@ -46,7 +46,7 @@ class BossBarAPI : JavaPlugin(), Listener {
                 updateBossBarPosition(player)
                 lastTickTime[uuid] = MinecraftServer.currentTick
             }
-        }, 0, 3)
+        }, 0, 1)
         Bukkit.getPluginManager().registerEvents(this, this)
     }
 
